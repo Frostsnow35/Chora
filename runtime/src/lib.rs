@@ -19,13 +19,17 @@ mod mock_agent;
 mod program;
 mod record;
 mod state;
+mod tool;
 
 pub use error::*;
 pub use intent::{GoalDescription, Intent};
-pub use mock_agent::MockAgent;
+pub use mock_agent::{MockAgent, ScriptedAction};
 pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescriptor, ToolSet};
 pub use record::AgentRecord;
 pub use state::{BlockReason, SchedulingState, TerminationReason};
+pub use tool::{
+    AddTool, BuiltinToolExecutor, EchoTool, ToolExecutor, ToolOutcome, ToolResult,
+};
 
 /// Unique identifier for an agent within a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -296,6 +300,14 @@ pub struct StepContext<'a> {
 
     /// Scheduling hint from runtime.
     pub scheduling_hint: SchedulingHint,
+
+    /// Result from a previously requested tool call, if any.
+    ///
+    /// The runtime populates this field after dispatching a `StepOutput::ToolCall`
+    /// through a `ToolExecutor`. The agent reads it on its next `step()` and
+    /// integrates the result into its working memory. The runtime does not
+    /// interpret the result (P4).
+    pub pending_tool_result: Option<ToolResult>,
 }
 
 /// View over working memory provided by the runtime.
@@ -417,7 +429,12 @@ pub struct StepMetrics {
 /// Request to invoke a tool.
 #[derive(Debug)]
 pub struct ToolCallRequest {
+    /// Stable identifier for this call, used to match the eventual
+    /// `ToolResult` back to the request.
+    pub call_id: String,
+    /// Name of the tool to invoke.
     pub tool_name: String,
+    /// Arguments to pass to the tool, encoded as JSON.
     pub args: serde_json::Value,
 }
 
