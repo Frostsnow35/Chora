@@ -27,9 +27,7 @@ pub use mock_agent::{MockAgent, ScriptedAction};
 pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescriptor, ToolSet};
 pub use record::AgentRecord;
 pub use state::{BlockReason, SchedulingState, TerminationReason};
-pub use tool::{
-    AddTool, BuiltinToolExecutor, EchoTool, ToolExecutor, ToolOutcome, ToolResult,
-};
+pub use tool::{BuiltinToolExecutor, ToolExecutor, ToolOutcome, ToolResult};
 
 /// Unique identifier for an agent within a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

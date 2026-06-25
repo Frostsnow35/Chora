@@ -1,3 +1,5 @@
+#![warn(rust_2018_idioms, missing_docs)]
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
