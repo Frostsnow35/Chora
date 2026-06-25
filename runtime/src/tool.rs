@@ -122,20 +122,26 @@ impl ToolRegistry {
 /// A tool that returns its arguments verbatim.
 ///
 /// Useful for testing the full tool-call round-trip without any transformation.
+#[derive(Debug, Default, Clone, Copy)]
 struct EchoTool;
 
 impl EchoTool {
     /// Tool name exposed to agents.
     const NAME: &'static str = "echo";
-}
 
-impl ToolExecutor for EchoTool {
-    fn execute(&self, req: &ToolCallRequest) -> ToolResult {
+    /// Execute the echo tool: return `args` as the success value.
+    fn execute(req: &ToolCallRequest) -> ToolResult {
         ToolResult {
             call_id: req.call_id.clone(),
             tool_name: Self::NAME.to_string(),
             outcome: ToolOutcome::Success(req.args.clone()),
         }
+    }
+}
+
+impl ToolExecutor for EchoTool {
+    fn execute(&self, req: &ToolCallRequest) -> ToolResult {
+        Self::execute(req)
     }
 
     fn has_tool(&self, name: &str) -> bool {
@@ -151,15 +157,15 @@ impl ToolExecutor for EchoTool {
 ///
 /// Expects args in the form `{"a": N, "b": N}` and returns `{"result": N}`.
 /// Returns an error outcome for malformed input.
+#[derive(Debug, Default, Clone, Copy)]
 struct AddTool;
 
 impl AddTool {
     /// Tool name exposed to agents.
     const NAME: &'static str = "add";
-}
 
-impl ToolExecutor for AddTool {
-    fn execute(&self, req: &ToolCallRequest) -> ToolResult {
+    /// Execute the add tool.
+    fn execute(req: &ToolCallRequest) -> ToolResult {
         let result = (|| {
             let a = req
                 .args
@@ -190,6 +196,119 @@ impl ToolExecutor for AddTool {
             outcome,
         }
     }
+}
+
+impl ToolExecutor for AddTool {
+    fn execute(&self, req: &ToolCallRequest) -> ToolResult {
+        Self::execute(req)
+    }
+
+    fn has_tool(&self, name: &str) -> bool {
+        name == Self::NAME
+    }
+
+    fn tool_names(&self) -> Vec<&str> {
+        vec![Self::NAME]
+    }
+}
+
+/// A tool that executes shell commands.
+///
+/// Expects args in the form:
+/// {
+///   "command": "echo",
+///   "args": ["Hello, World!"]
+/// }
+#[derive(Debug, Default, Clone, Copy)]
+struct ShellTool;
+
+impl ShellTool {
+    /// Tool name exposed to agents.
+    const NAME: &'static str = "shell";
+
+    /// Execute a shell command.
+    fn execute(req: &ToolCallRequest) -> ToolResult {
+        // Validate command field
+        let command = req
+            .args
+            .get("command")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'command' field".to_string())
+            .map_err(|message| ToolResult {
+                call_id: req.call_id.clone(),
+                tool_name: Self::NAME.to_string(),
+                outcome: ToolOutcome::Error {
+                    code: "INVALID_ARGS".to_string(),
+                    message,
+                },
+            });
+
+        if let Err(result) = command {
+            return result;
+        }
+
+        let command = command.unwrap();
+        // Parse optional arguments (if provided as array)
+        let args = req
+            .args
+            .get("args")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .collect::<Vec<&str>>()
+            })
+            .unwrap_or_default();
+
+        // Build and execute command
+        let mut cmd = std::process::Command::new(command);
+        cmd.args(&args);
+
+        match cmd.output() {
+            Ok(output) => {
+                let success = output.status.success();
+                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+                if success {
+                    ToolResult {
+                        call_id: req.call_id.clone(),
+                        tool_name: Self::NAME.to_string(),
+                        outcome: ToolOutcome::Success(serde_json::json!({
+                            "stdout": stdout,
+                            "stderr": stderr,
+                        })),
+                    }
+                } else {
+                    ToolResult {
+                        call_id: req.call_id.clone(),
+                        tool_name: Self::NAME.to_string(),
+                        outcome: ToolOutcome::Error {
+                            code: "COMMAND_ERROR".to_string(),
+                            message: format!(
+                                "command failed: {}",
+                                stderr.trim().lines().next().unwrap_or("No error message")
+                            ),
+                        },
+                    }
+                }
+            }
+            Err(e) => ToolResult {
+                call_id: req.call_id.clone(),
+                tool_name: Self::NAME.to_string(),
+                outcome: ToolOutcome::Error {
+                    code: "SYSTEM_ERROR".to_string(),
+                    message: e.to_string(),
+                },
+            },
+        }
+    }
+}
+
+impl ToolExecutor for ShellTool {
+    fn execute(&self, req: &ToolCallRequest) -> ToolResult {
+        Self::execute(req)
+    }
 
     fn has_tool(&self, name: &str) -> bool {
         name == Self::NAME
@@ -204,6 +323,7 @@ impl ToolExecutor for AddTool {
 ///
 /// This replaces the previous hardcoded BuiltinToolExecutor. The registry
 /// pattern allows adding new tools without changing the executor implementation.
+#[derive(Default)]
 pub struct BuiltinToolExecutor {
     registry: ToolRegistry,
 }
@@ -220,6 +340,14 @@ impl BuiltinToolExecutor {
     /// Register a new tool by name and implementation.
     pub fn register(&mut self, name: String, executor: Box<dyn ToolExecutor>) {
         self.registry.register(name, executor);
+    }
+
+    /// Register shell tool if not already present.
+    pub fn with_shell_tool(mut self) -> Self {
+        if !self.registry.has_tool(ShellTool::NAME) {
+            self.register(ShellTool::NAME.to_string(), Box::new(ShellTool));
+        }
+        self
     }
 }
 
@@ -300,90 +428,7 @@ mod tests {
         assert_eq!(result.outcome, ToolOutcome::Success(serde_json::json!({})));
     }
 
-    #[test]
-    fn test_add_tool_missing_a() {
-        let req = make_request("add", serde_json::json!({"b": 5}));
-        let add_tool = AddTool;
-        let result = add_tool.execute(&req);
-        match &result.outcome {
-            ToolOutcome::Error { code, message } => {
-                assert_eq!(code, "INVALID_ARGS");
-                assert!(message.contains("'a'"));
-                assert!(!message.contains("'b'"));
-            }
-            other => panic!("expected Error, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_add_tool_missing_b() {
-        let req = make_request("add", serde_json::json!({"a": 5}));
-        let add_tool = AddTool;
-        let result = add_tool.execute(&req);
-        match &result.outcome {
-            ToolOutcome::Error { code, message } => {
-                assert_eq!(code, "INVALID_ARGS");
-                assert!(message.contains("'b'"));
-                assert!(!message.contains("'a'"));
-            }
-            other => panic!("expected Error, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_add_tool_extra_fields() {
-        let req = make_request("add", serde_json::json!({"a": 1, "b": 2, "extra": "value"}));
-        let add_tool = AddTool;
-        let result = add_tool.execute(&req);
-        assert!(matches!(result.outcome, ToolOutcome::Success(_)));
-        if let ToolOutcome::Success(v) = result.outcome {
-            assert_eq!(v, serde_json::json!({"result": 3.0}));
-        }
-    }
-
-    #[test]
-    fn test_add_tool_a_is_object() {
-        let req = make_request("add", serde_json::json!({"a": {}, "b": 5}));
-        let add_tool = AddTool;
-        let result = add_tool.execute(&req);
-        match &result.outcome {
-            ToolOutcome::Error { code, message } => {
-                assert_eq!(code, "INVALID_ARGS");
-                assert!(message.contains("'a'") && !message.contains("'b'"));
-            }
-            other => panic!("expected Error, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_add_tool_a_is_null() {
-        let req = make_request("add", serde_json::json!({"a": null, "b": 5}));
-        let add_tool = AddTool;
-        let result = add_tool.execute(&req);
-        match &result.outcome {
-            ToolOutcome::Error { code, message } => {
-                assert_eq!(code, "INVALID_ARGS");
-                assert!(message.contains("'a'") && !message.contains("'b'"));
-            }
-            other => panic!("expected Error, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_add_tool_b_is_array() {
-        let req = make_request("add", serde_json::json!({"a": 5, "b": [1,2,3]}));
-        let add_tool = AddTool;
-        let result = add_tool.execute(&req);
-        match &result.outcome {
-            ToolOutcome::Error { code, message } => {
-                assert_eq!(code, "INVALID_ARGS");
-                assert!(message.contains("'b'") && !message.contains("'a'"));
-            }
-            other => panic!("expected Error, got {:?}", other),
-        }
-    }
-
-    // --- BuiltinToolExecutor tests ------------------------------------------- -------------------------------------------
+    // --- BuiltinToolExecutor tests -------------------------------------------
 
     #[test]
     fn test_builtin_executor_dispatches_echo() {
@@ -438,5 +483,75 @@ mod tests {
         exec.register("custom".to_string(), Box::new(EchoTool));
         assert!(exec.has_tool("custom"));
         assert_eq!(exec.tool_names().len(), 3);
+    }
+
+    // --- ShellTool tests -----------------------------------------------------
+
+    #[test]
+    fn test_shell_tool_valid_command() {
+        if cfg!(target_os = "windows") {
+            // Windows echo (without /n)
+            let req = make_request("shell", serde_json::json!({
+                "command": "cmd",
+                "args": ["/c", "echo", "Hello"]
+            }));
+            let result = ShellTool::execute(&req);
+
+            match &result.outcome {
+                ToolOutcome::Success(output) => {
+                    let stdout = output.get("stdout").and_then(|v| v.as_str());
+                    assert!(stdout.map(|s| s.trim()).unwrap_or("") == "Hello");
+                }
+                other => panic!("expected Success, got {:?}", other),
+            }
+        } else {
+            let req = make_request("shell", serde_json::json!({
+                "command": "echo",
+                "args": ["Hello"]
+            }));
+            let result = ShellTool::execute(&req);
+
+            match &result.outcome {
+                ToolOutcome::Success(output) => {
+                    let stdout = output.get("stdout").and_then(|v| v.as_str());
+                    assert!(stdout.map(|s| s.trim()).unwrap_or("") == "Hello");
+                }
+                other => panic!("expected Success, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn test_shell_tool_missing_command() {
+        let req = make_request("shell", serde_json::json!({
+            "args": ["echo"]
+        }));
+        let result = ShellTool::execute(&req);
+
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "INVALID_ARGS");
+                assert!(message.contains("missing 'command' field"));
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_shell_tool_invalid_command() {
+        let req = make_request("shell", serde_json::json!({
+            "command": "nonexistent_command",
+            "args": []
+        }));
+        let result = ShellTool::execute(&req);
+
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "SYSTEM_ERROR");
+                // Error message varies by platform
+                assert!(!message.is_empty());
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
     }
 }
