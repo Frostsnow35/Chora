@@ -300,7 +300,90 @@ mod tests {
         assert_eq!(result.outcome, ToolOutcome::Success(serde_json::json!({})));
     }
 
-    // --- BuiltinToolExecutor tests -------------------------------------------
+    #[test]
+    fn test_add_tool_missing_a() {
+        let req = make_request("add", serde_json::json!({"b": 5}));
+        let add_tool = AddTool;
+        let result = add_tool.execute(&req);
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "INVALID_ARGS");
+                assert!(message.contains("'a'"));
+                assert!(!message.contains("'b'"));
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_add_tool_missing_b() {
+        let req = make_request("add", serde_json::json!({"a": 5}));
+        let add_tool = AddTool;
+        let result = add_tool.execute(&req);
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "INVALID_ARGS");
+                assert!(message.contains("'b'"));
+                assert!(!message.contains("'a'"));
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_add_tool_extra_fields() {
+        let req = make_request("add", serde_json::json!({"a": 1, "b": 2, "extra": "value"}));
+        let add_tool = AddTool;
+        let result = add_tool.execute(&req);
+        assert!(matches!(result.outcome, ToolOutcome::Success(_)));
+        if let ToolOutcome::Success(v) = result.outcome {
+            assert_eq!(v, serde_json::json!({"result": 3.0}));
+        }
+    }
+
+    #[test]
+    fn test_add_tool_a_is_object() {
+        let req = make_request("add", serde_json::json!({"a": {}, "b": 5}));
+        let add_tool = AddTool;
+        let result = add_tool.execute(&req);
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "INVALID_ARGS");
+                assert!(message.contains("'a'") && !message.contains("'b'"));
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_add_tool_a_is_null() {
+        let req = make_request("add", serde_json::json!({"a": null, "b": 5}));
+        let add_tool = AddTool;
+        let result = add_tool.execute(&req);
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "INVALID_ARGS");
+                assert!(message.contains("'a'") && !message.contains("'b'"));
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_add_tool_b_is_array() {
+        let req = make_request("add", serde_json::json!({"a": 5, "b": [1,2,3]}));
+        let add_tool = AddTool;
+        let result = add_tool.execute(&req);
+        match &result.outcome {
+            ToolOutcome::Error { code, message } => {
+                assert_eq!(code, "INVALID_ARGS");
+                assert!(message.contains("'b'") && !message.contains("'a'"));
+            }
+            other => panic!("expected Error, got {:?}", other),
+        }
+    }
+
+    // --- BuiltinToolExecutor tests ------------------------------------------- -------------------------------------------
 
     #[test]
     fn test_builtin_executor_dispatches_echo() {
