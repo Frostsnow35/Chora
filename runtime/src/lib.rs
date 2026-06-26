@@ -223,12 +223,20 @@ pub struct Metadata {
 
 /// The minimal interface through which the runtime interacts with an agent.
 ///
-/// Implementations may wrap any reasoning substrate (LLM, rule engine, symbolic planner,
-/// human-in-the-loop). The runtime sees only this shape.
+/// Implementations may wrap any reasoning substrate (LLM, rule engine,
+/// symbolic planner, human-in-the-loop). The runtime sees only this shape.
+///
+/// # Design Principles
+///
+/// - **P2 (Abstraction by Reduction)**: A single trait regardless of substrate.
+/// - **P4 (End-to-End)**: The runtime is dumb; semantic work lives outside.
+/// - **P1 (Mechanism/Policy)**: Mechanisms exposed via trait; policy is pluggable.
+/// - **T5 (Simplicity ↔ Expressiveness)**: Minimal sufficient set of operations.
 ///
 /// # Safety
 ///
-/// This trait is safe. It does not require any unsafe operations or expose unsafe methods.
+/// This trait is safe. It does not require any unsafe operations or expose
+/// unsafe methods.
 pub trait Agent {
     /// Unique identity within the field.
     fn id(&self) -> AgentId;
@@ -243,10 +251,22 @@ pub trait Agent {
 
     /// Execute one step of the agent's reasoning, within the given context.
     ///
-    /// This is the atomic unit of agent execution. The step must be:
-    /// - self-contained: all inputs come from `ctx`
-    /// - auditable: must produce a StepRecord for the episodic log
-    /// - bounded: must terminate in finite time / tokens
+    /// This is the atomic unit of agent execution (cf. manifest §5 "what is
+    /// the atomic unit?"). The step must be:
+    ///   - self-contained: all inputs come from `ctx`
+    ///   - auditable: must produce a StepRecord for the episodic log
+    ///   - bounded: must terminate in finite time / tokens
+    ///
+    /// The agent returns a `StepResult` describing what happened and what to do next:
+    /// - `status`: whether the step succeeded, failed, or was interrupted
+    /// - `output`: what the step produced (text, tool call, message, etc.)
+    /// - `wants_yield`: whether the agent voluntarily yields control
+    /// - `metrics`: resource usage for this step (tokens, time)
+    ///
+    /// If the agent previously requested a tool call via `StepOutput::ToolCall`,
+    /// the runtime will have executed it and placed the result in
+    /// `ctx.pending_tool_result`. The agent should read and integrate this
+    /// result on this call.
     ///
     /// # Errors
     ///
@@ -279,6 +299,20 @@ pub trait Agent {
 ///
 /// This is the runtime's mechanism for giving agents access to resources
 /// without leaking internals (P5: capabilities, P1: mechanism vs policy).
+///
+/// # Design
+///
+/// The context is intentionally minimal and capability-based:
+/// - **Working memory** is provided as a read-only view (`WorkingMemoryView`)
+/// - **Capabilities** grant permission but do not bypass checks
+/// - **Pending messages** are delivered all-at-once, not incrementally
+/// - **Time** is provided for deadlines and timeouts
+/// - **Token counter** enforces budgets atomically
+/// - **Scheduling hint** allows the runtime to signal urgency
+/// - **Pending tool result** enables end-to-end tool call flow (P4)
+///
+/// By keeping the context small and capability-based, the runtime avoids
+/// becoming a bottleneck (P1) while ensuring agents cannot bypass checks.
 #[derive(Debug)]
 pub struct StepContext<'a> {
     /// The agent's working memory (read-only view during this step).
@@ -305,6 +339,32 @@ pub struct StepContext<'a> {
     /// through a `ToolExecutor`. The agent reads it on its next `step()` and
     /// integrates the result into its working memory. The runtime does not
     /// interpret the result (P4).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// // In agent.step():
+    /// match ctx.pending_tool_result.take() {
+    ///     Some(result) => {
+    ///         match result.outcome {
+    ///             ToolOutcome::Success(value) => {
+    ///                 // Integrate `value` into working memory
+    ///                 self.memory.append(format!(
+    ///                     "Tool '{}' returned: {}",
+    ///                     result.tool_name, value
+    ///                 ));
+    ///             }
+    ///             ToolOutcome::Error { code, message } => {
+    ///                 // Handle error appropriately
+    ///                 self.handle_tool_error(&result.tool_name, &code, &message);
+    ///             }
+    ///         }
+    ///     }
+    ///     None => {
+    ///         // No tool result pending — proceed with normal reasoning
+    ///     }
+    /// }
+    /// ```
     pub pending_tool_result: Option<ToolResult>,
 }
 

@@ -48,12 +48,60 @@ pub struct ToolResult {
 /// Implementations may wrap local functions, RPC endpoints, or sandboxed
 /// subprocesses. The runtime treats all executors identically — it does not
 /// inspect the outcome (P4).
+///
+/// # Safety
+///
+/// This trait is safe. It does not require any unsafe operations or expose
+/// unsafe methods.
+///
+/// # Design
+///
+/// The trait is intentionally minimal and mechanism-focused:
+/// - **`execute()`** is the sole execution method
+/// - **`has_tool()`** enables runtime tool discovery
+/// - **`tool_names()`** enables introspection and listing
+///
+/// By keeping the interface small and focused, the runtime avoids becoming
+/// a bottleneck (P1) while ensuring all tool executors are treated uniformly.
 pub trait ToolExecutor: Send + Sync {
     /// Execute a tool call and return the result.
     ///
     /// Implementations must not panic. Invalid tool names produce a
     /// `ToolOutcome::Error` result rather than a Rust-level error, so the
     /// runtime can always deliver a well-formed `ToolResult` back to the agent.
+    ///
+    /// # Parameters
+    ///
+    /// - `req`: The tool call request containing:
+    ///   - `call_id`: Stable identifier for matching results to requests
+    ///   - `tool_name`: Name of the tool to invoke
+    ///   - `args`: Arguments to pass to the tool, encoded as JSON
+    ///
+    /// # Returns
+    ///
+    /// A `ToolResult` containing:
+    /// - `call_id`: Matches the request's `call_id`
+    /// - `tool_name`: Which tool produced this result
+    /// - `outcome`: Success value or error
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let req = ToolCallRequest {
+    ///     call_id: "call-123".to_string(),
+    ///     tool_name: "add".to_string(),
+    ///     args: json!({"a": 10, "b": 20}),
+    /// };
+    /// let result = executor.execute(&req);
+    /// match result.outcome {
+    ///     ToolOutcome::Success(value) => {
+    ///         println!("Result: {}", value);
+    ///     }
+    ///     ToolOutcome::Error { code, message } => {
+    ///         eprintln!("Error {}: {}", code, message);
+    ///     }
+    /// }
+    /// ```
     fn execute(&self, req: &ToolCallRequest) -> ToolResult;
 
     /// Check whether this executor has a tool registered under `name`.
