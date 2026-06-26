@@ -1,0 +1,20 @@
+[package]
+name = "experiments"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "pure_reasoning"
+path = "pure_reasoning.rs"
+
+[[bin]]
+name = "calculator"
+path = "calculator.rs"
+
+[dependencies]
+runtime = { path = "../runtime" }
+serde_json = "1.0"
+chrono = "0.4"
+
+[lints]
+workspace = true
