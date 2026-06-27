@@ -56,6 +56,92 @@ pub struct TrustEvent {
     pub impact: f64,
 }
 
+// Manual implementation of Serialize and Deserialize to skip the timestamp field
+impl Serialize for TrustEvent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("TrustEvent", 3)?;
+        state.serialize_field("step_id", &self.step_id)?;
+        state.serialize_field("behavior_type", &self.behavior_type)?;
+        state.serialize_field("impact", &self.impact)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for TrustEvent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            StepId,
+            BehaviorType,
+            Impact,
+        }
+
+        struct TrustEventVisitor;
+
+        impl<'de> Visitor<'de> for TrustEventVisitor {
+            type Value = TrustEvent;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct TrustEvent")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<TrustEvent, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut step_id = None;
+                let mut behavior_type = None;
+                let mut impact = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::StepId => {
+                            if step_id.is_some() {
+                                return Err(de::Error::duplicate_field("step_id"));
+                            }
+                            step_id = Some(map.next_value()?);
+                        }
+                        Field::BehaviorType => {
+                            if behavior_type.is_some() {
+                                return Err(de::Error::duplicate_field("behavior_type"));
+                            }
+                            behavior_type = Some(map.next_value()?);
+                        }
+                        Field::Impact => {
+                            if impact.is_some() {
+                                return Err(de::Error::duplicate_field("impact"));
+                            }
+                            impact = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let step_id = step_id.ok_or_else(|| de::Error::missing_field("step_id"))?;
+                let behavior_type = behavior_type.ok_or_else(|| de::Error::missing_field("behavior_type"))?;
+                let impact = impact.ok_or_else(|| de::Error::missing_field("impact"))?;
+                Ok(TrustEvent {
+                    timestamp: Instant::now(), // Initialize with current time when deserializing
+                    step_id,
+                    behavior_type,
+                    impact,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &["step_id", "behavior_type", "impact"];
+        deserializer.deserialize_struct("TrustEvent", FIELDS, TrustEventVisitor)
+    }
+}
+
 /// Trust Meter — maintains trust score and history.
 ///
 /// This component lives in Kernel Space and is write-protected from User Space.
