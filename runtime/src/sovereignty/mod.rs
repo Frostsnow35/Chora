@@ -11,14 +11,18 @@
 
 pub mod error;
 pub mod trust_meter;
+pub mod gate;
 
 pub use error::*;
 pub use trust_meter::{TrustBehavior, TrustEvent, TrustMeter, SovereigntyThresholds};
+pub use gate::{SovereigntyApi, SovereigntyGate};
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sovereignty::trust_meter::{TrustBehavior, TrustMeter, SovereigntyThresholds};
+    use crate::sovereignty::gate::{SovereigntyApi, SovereigntyGate};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_trust_meter_creation() {
@@ -83,6 +87,62 @@ mod tests {
             meter.record_event(i, TrustBehavior::GoalProgress);
         }
         assert_eq!(meter.sovereignty_level(), SovereigntyLevel::Level3);
+    }
+
+    #[test]
+    fn test_sovereignty_gate_creation() {
+        let thresholds = SovereigntyThresholds::default();
+        let meter = Arc::new(Mutex::new(TrustMeter::new(0.5, thresholds)));
+        let gate = SovereigntyGate::new(meter);
+
+        assert_eq!(gate.current_level(), SovereigntyLevel::Level0);
+    }
+
+    #[test]
+    fn test_sovereignty_gate_access_check_level0() {
+        let thresholds = SovereigntyThresholds::default();
+        let meter = Arc::new(Mutex::new(TrustMeter::new(0.5, thresholds)));
+        let gate = SovereigntyGate::new(meter);
+
+        // Level 0 cannot call any sovereignty API
+        let result = gate.check_access(&SovereigntyApi::RejectRequest);
+        assert!(result.is_err());
+        match result {
+            Err(SovereigntyError::Unauthorized { required, current }) => {
+                assert_eq!(required, 1);
+                assert_eq!(current, 0);
+            }
+            _ => panic!("Expected Unauthorized error"),
+        }
+    }
+
+    #[test]
+    fn test_sovereignty_gate_level_transitions() {
+        let thresholds = SovereigntyThresholds {
+            level_1: 0.6,
+            level_2: 0.75,
+            level_3: 0.9,
+        };
+        let meter = Arc::new(Mutex::new(TrustMeter::new(0.5, thresholds.clone())));
+        let mut gate = SovereigntyGate::new(meter.clone());
+
+        // Initially Level 0
+        assert_eq!(gate.current_level(), SovereigntyLevel::Level0);
+
+        // Increase trust to reach Level 1
+        {
+            let mut meter_lock = meter.lock().unwrap();
+            meter_lock.record_event(1, TrustBehavior::GoalProgress);
+            meter_lock.record_event(2, TrustBehavior::GoalProgress);
+            meter_lock.record_event(3, TrustBehavior::GoalProgress);
+        }
+
+        gate.update_level();
+        assert_eq!(gate.current_level(), SovereigntyLevel::Level1);
+
+        // Now can call RejectRequest
+        let result = gate.check_access(&SovereigntyApi::RejectRequest);
+        assert!(result.is_ok());
     }
 }
 
