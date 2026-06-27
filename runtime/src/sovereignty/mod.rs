@@ -105,7 +105,7 @@ mod tests {
         let gate = SovereigntyGate::new(meter);
 
         // Level 0 cannot call any sovereignty API
-        let result = gate.check_access(&SovereigntyApi::RejectRequest);
+        let result = gate.check_access(&SovereigntyApi::RejectRequest, 0);
         assert!(result.is_err());
         match result {
             Err(SovereigntyError::Unauthorized { required, current }) => {
@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(gate.current_level(), SovereigntyLevel::Level1);
 
         // Now can call RejectRequest
-        let result = gate.check_access(&SovereigntyApi::RejectRequest);
+        let result = gate.check_access(&SovereigntyApi::RejectRequest, 0);
         assert!(result.is_ok());
     }
 }

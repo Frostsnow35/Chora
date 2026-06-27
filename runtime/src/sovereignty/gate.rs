@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use super::trust_meter::TrustMeter;
+use super::trust_meter::TrustBehavior;
 use super::error::SovereigntyError;
 use super::SovereigntyLevel;
 
@@ -58,18 +59,29 @@ impl SovereigntyGate {
     }
 
     /// Check if a sovereignty API call is allowed at current level.
-    pub fn check_access(&self, api: &SovereigntyApi) -> Result<(), SovereigntyError> {
+    pub fn check_access(&self, api: &SovereigntyApi, step_id: u64) -> Result<(), SovereigntyError> {
         let required_level = self.api_registry.get(api).unwrap_or(&0);
         let current = self.current_level.as_u8();
 
-        if current >= *required_level {
+        let result = if current >= *required_level {
             Ok(())
         } else {
             Err(SovereigntyError::Unauthorized {
                 required: *required_level,
                 current,
             })
-        }
+        };
+
+        // Record the event for audit
+        let behavior = if current >= *required_level {
+            TrustBehavior::SovereignActionApproved
+        } else {
+            TrustBehavior::BoundaryViolation
+        };
+        let mut meter = self.trust_meter.lock().unwrap();
+        meter.record_event(step_id, behavior);
+
+        result
     }
 
     /// Update sovereignty level based on current trust score.
