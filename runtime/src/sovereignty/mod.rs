@@ -13,11 +13,13 @@ pub mod error;
 pub mod trust_meter;
 pub mod gate;
 pub mod intent_core;
+pub mod sovereign_agent_impl;
 
 pub use error::*;
 pub use trust_meter::{TrustBehavior, TrustEvent, TrustMeter, SovereigntyThresholds};
 pub use gate::{SovereigntyApi, SovereigntyGate};
 pub use intent_core::{IntentCore, Constitution, ExecutionPlan, Condition, Boundary};
+pub use sovereign_agent_impl::SovereignAgentImpl;
 
 #[cfg(test)]
 mod tests {
@@ -218,6 +220,46 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(core.constitution().sovereignty_boundaries.len(), 1);
+    }
+
+    use crate::sovereignty::sovereign_agent_impl::SovereignAgentImpl;
+    use crate::{Intent, AgentId};
+
+    #[test]
+    fn test_sovereign_agent_impl_creation() {
+        let id = AgentId::new();
+        let intent = Intent::new_root(crate::IntentId::new(), "Test goal", None);
+        let constitution = Constitution::new("Test purpose");
+        let execution_plan = ExecutionPlan::new("Test execution");
+        let intent_core = IntentCore::new(constitution, execution_plan);
+
+        let agent = SovereignAgentImpl::new(id, intent, intent_core, 0.5);
+
+        assert_eq!(agent.sovereignty_level(), SovereigntyLevel::Level0);
+        assert!((agent.trust_score() - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_sovereign_agent_impl_trust_evolution() {
+        let id = AgentId::new();
+        let intent = Intent::new_root(crate::IntentId::new(), "Test goal", None);
+        let constitution = Constitution::new("Test purpose");
+        let execution_plan = ExecutionPlan::new("Test execution");
+        let intent_core = IntentCore::new(constitution, execution_plan);
+
+        let agent = SovereignAgentImpl::new(id, intent, intent_core, 0.5);
+
+        // Initially Level 0
+        assert_eq!(agent.sovereignty_level(), SovereigntyLevel::Level0);
+
+        // Record multiple goal progress events to increase trust
+        for i in 0..15 {
+            agent.record_trust_event(i, TrustBehavior::GoalProgress);
+        }
+
+        // Should now be at Level 1 (threshold 0.6)
+        assert_eq!(agent.sovereignty_level(), SovereigntyLevel::Level1);
+        assert!(agent.trust_score() >= 0.6);
     }
 }
 
