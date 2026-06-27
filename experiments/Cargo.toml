@@ -11,6 +11,10 @@ path = "pure_reasoning.rs"
 name = "calculator"
 path = "calculator.rs"
 
+[[bin]]
+name = "personal_assistant"
+path = "personal_assistant.rs"
+
 [dependencies]
 runtime = { path = "../runtime" }
 serde_json = "1.0"

@@ -399,6 +399,11 @@ impl BuiltinToolExecutor {
         self.registry.register(name, executor);
     }
 
+    /// Register the memory tool with the executor.
+    pub fn register_memory_tool(&mut self, store: MemoryStore) {
+        self.registry.register_memory_tool(store);
+    }
+
     /// Register shell tool if not already present.
     pub fn with_shell_tool(mut self) -> Self {
         if !self.registry.has_tool(ShellTool::NAME) {
