@@ -12,10 +12,12 @@
 pub mod error;
 pub mod trust_meter;
 pub mod gate;
+pub mod intent_core;
 
 pub use error::*;
 pub use trust_meter::{TrustBehavior, TrustEvent, TrustMeter, SovereigntyThresholds};
 pub use gate::{SovereigntyApi, SovereigntyGate};
+pub use intent_core::{IntentCore, Constitution, ExecutionPlan, Condition, Boundary};
 
 #[cfg(test)]
 mod tests {
@@ -143,6 +145,79 @@ mod tests {
         // Now can call RejectRequest
         let result = gate.check_access(&SovereigntyApi::RejectRequest, 0);
         assert!(result.is_ok());
+    }
+
+    use crate::sovereignty::intent_core::{IntentCore, Constitution, ExecutionPlan, Condition, Boundary};
+
+    #[test]
+    fn test_intent_core_creation() {
+        let constitution = Constitution::new("Help users with coding tasks");
+        let execution_plan = ExecutionPlan::new("Answer user's question");
+        let core = IntentCore::new(constitution, execution_plan);
+
+        assert_eq!(core.constitution().purpose, "Help users with coding tasks");
+        assert_eq!(core.execution_plan().current_goal, "Answer user's question");
+    }
+
+    #[test]
+    fn test_constitution_append_only() {
+        let mut constitution = Constitution::new("Test purpose");
+
+        // Add a boundary
+        let boundary = Boundary {
+            description: "Do not execute destructive commands".to_string(),
+            violation_penalty: 0.15,
+        };
+        constitution.add_boundary(boundary);
+
+        assert_eq!(constitution.sovereignty_boundaries.len(), 1);
+
+        // Add another boundary (append works)
+        let boundary2 = Boundary {
+            description: "Do not access private data".to_string(),
+            violation_penalty: 0.15,
+        };
+        constitution.add_boundary(boundary2);
+
+        assert_eq!(constitution.sovereignty_boundaries.len(), 2);
+    }
+
+    #[test]
+    fn test_execution_plan_mutations() {
+        let mut plan = ExecutionPlan::new("Initial goal");
+
+        assert_eq!(plan.current_goal, "Initial goal");
+
+        // Update goal
+        plan.set_goal("New goal");
+        assert_eq!(plan.current_goal, "New goal");
+
+        // Add strategy steps
+        plan.add_strategy_step("Step 1: Analyze problem");
+        plan.add_strategy_step("Step 2: Generate solution");
+        assert_eq!(plan.strategy.len(), 2);
+
+        // Set priorities
+        plan.set_priority("Task A", 0.8);
+        plan.set_priority("Task B", 0.5);
+        assert_eq!(plan.priorities.len(), 2);
+    }
+
+    #[test]
+    fn test_intent_core_amendment() {
+        let constitution = Constitution::new("Test purpose");
+        let execution_plan = ExecutionPlan::new("Test goal");
+        let mut core = IntentCore::new(constitution, execution_plan);
+
+        // Apply amendment with new boundary
+        let new_boundary = Boundary {
+            description: "New boundary".to_string(),
+            violation_penalty: 0.1,
+        };
+        let result = core.apply_amendment(None, Some(new_boundary));
+
+        assert!(result.is_ok());
+        assert_eq!(core.constitution().sovereignty_boundaries.len(), 1);
     }
 }
 
