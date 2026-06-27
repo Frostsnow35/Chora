@@ -19,7 +19,7 @@ mod mock_agent;
 mod program;
 mod record;
 mod state;
-mod tool;
+pub mod tool;
 pub mod sovereignty;
 
 pub use error::*;

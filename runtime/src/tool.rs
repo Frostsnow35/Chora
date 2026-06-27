@@ -11,6 +11,9 @@
 //! See `../../rfc/001-agent-process.md` for the validation plan that motivated
 //! this module (Agent 1 — Tool-Using / Calculator).
 
+pub mod memory_tool;
+pub use memory_tool::{MemoryTool, MemoryStore};
+
 use crate::ToolCallRequest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -160,6 +163,12 @@ impl ToolRegistry {
     /// List all tool names registered with this registry.
     pub fn tool_names(&self) -> Vec<&str> {
         self.tools.keys().map(AsRef::as_ref).collect()
+    }
+
+    /// Register the memory tool with the registry.
+    pub fn register_memory_tool(&mut self, store: MemoryStore) {
+        let tool = Box::new(MemoryTool::new(store));
+        self.register("memory".to_string(), tool);
     }
 }
 
