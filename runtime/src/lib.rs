@@ -28,7 +28,7 @@ pub use mock_agent::{MockAgent, ScriptedAction};
 pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescriptor, ToolSet};
 pub use record::AgentRecord;
 pub use state::{BlockReason, SchedulingState, TerminationReason};
-pub use tool::{BuiltinToolExecutor, ToolExecutor, ToolOutcome, ToolResult, MemoryStore, MemoryTool};
+pub use tool::{BuiltinToolExecutor, ToolExecutor, ToolOutcome, ToolResult};
 pub use sovereignty::{SovereigntyError, SovereigntyLevel, SovereignAgent};
 
 /// Unique identifier for an agent within a field.
