@@ -59,6 +59,13 @@ impl SovereigntyGate {
     }
 
     /// Check if a sovereignty API call is allowed at current level.
+    ///
+    /// # Side Effects
+    ///
+    /// This method records a trust event via the TrustMeter for audit purposes.
+    /// Approved calls record `SovereignActionApproved`; denied calls record
+    /// `BoundaryViolation`. Callers should be aware that repeated calls for
+    /// the same logical operation will accumulate trust score changes.
     pub fn check_access(&self, api: &SovereigntyApi, step_id: u64) -> Result<(), SovereigntyError> {
         let required_level = self.api_registry.get(api).unwrap_or(&0);
         let current = self.current_level.as_u8();

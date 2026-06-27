@@ -149,7 +149,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    use crate::sovereignty::intent_core::{IntentCore, Constitution, ExecutionPlan, Condition, Boundary};
+    use crate::sovereignty::intent_core::{IntentCore, Constitution, ExecutionPlan, Boundary};
 
     #[test]
     fn test_intent_core_creation() {

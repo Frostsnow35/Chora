@@ -25,6 +25,7 @@ pub struct SovereignAgentImpl {
     /// Scheduling state.
     state: SchedulingState,
     /// Kernel Space: Intent Core (immutable Constitution + mutable Execution Plan).
+    #[allow(dead_code)] // Used by future User Space reasoning logic
     intent_core: Arc<Mutex<IntentCore>>,
     /// Kernel Space: Trust Meter (tracks trustworthiness).
     trust_meter: Arc<Mutex<TrustMeter>>,
