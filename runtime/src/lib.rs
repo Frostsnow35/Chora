@@ -20,7 +20,7 @@ mod program;
 mod record;
 mod state;
 mod tool;
-mod sovereignty;
+pub mod sovereignty;
 
 pub use error::*;
 pub use intent::{GoalDescription, Intent};
@@ -29,7 +29,7 @@ pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescripto
 pub use record::AgentRecord;
 pub use state::{BlockReason, SchedulingState, TerminationReason};
 pub use tool::{BuiltinToolExecutor, ToolExecutor, ToolOutcome, ToolResult};
-pub use sovereignty::{SovereigntyError, SovereigntyLevel, SovereignAgent};
+pub use sovereignty::{SovereigntyError, SovereigntyLevel, SovereignAgent, TrustBehavior, TrustMeter, SovereigntyThresholds, SovereigntyApi, SovereigntyGate, IntentCore, Constitution, ExecutionPlan, SovereignAgentImpl};
 
 /// Unique identifier for an agent within a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
