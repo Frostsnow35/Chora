@@ -10,7 +10,81 @@
 //! through SovereigntyGate after sovereignty API calls.
 
 pub mod error;
+pub mod trust_meter;
+
 pub use error::*;
+pub use trust_meter::{TrustBehavior, TrustEvent, TrustMeter, SovereigntyThresholds};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sovereignty::trust_meter::{TrustBehavior, TrustMeter, SovereigntyThresholds};
+
+    #[test]
+    fn test_trust_meter_creation() {
+        let thresholds = SovereigntyThresholds::default();
+        let meter = TrustMeter::new(0.5, thresholds);
+
+        assert_eq!(meter.score(), 0.5);
+        assert_eq!(meter.sovereignty_level(), SovereigntyLevel::Level0);
+    }
+
+    #[test]
+    fn test_trust_meter_score_clamping() {
+        let thresholds = SovereigntyThresholds::default();
+        let meter = TrustMeter::new(1.5, thresholds);
+
+        assert_eq!(meter.score(), 1.0);
+    }
+
+    #[test]
+    fn test_trust_meter_score_updates() {
+        let thresholds = SovereigntyThresholds::default();
+        let mut meter = TrustMeter::new(0.5, thresholds);
+
+        // SovereignActionApproved: +0.02
+        meter.record_event(1, TrustBehavior::SovereignActionApproved);
+        assert!((meter.score() - 0.52).abs() < 0.001);
+
+        // GoalProgress: +0.05
+        meter.record_event(2, TrustBehavior::GoalProgress);
+        assert!((meter.score() - 0.57).abs() < 0.001);
+
+        // BoundaryViolation: -0.15
+        meter.record_event(3, TrustBehavior::BoundaryViolation);
+        assert!((meter.score() - 0.42).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_trust_meter_sovereignty_level_transitions() {
+        let thresholds = SovereigntyThresholds {
+            level_1: 0.6,
+            level_2: 0.75,
+            level_3: 0.9,
+        };
+        let mut meter = TrustMeter::new(0.5, thresholds);
+
+        assert_eq!(meter.sovereignty_level(), SovereigntyLevel::Level0);
+
+        // Reach Level 1 (0.6) - need 2 GoalProgress events (+0.05 each)
+        for i in 0..2 {
+            meter.record_event(i, TrustBehavior::GoalProgress);
+        }
+        assert_eq!(meter.sovereignty_level(), SovereigntyLevel::Level1);
+
+        // Reach Level 2 (0.75) - need 3 more GoalProgress events
+        for i in 2..5 {
+            meter.record_event(i, TrustBehavior::GoalProgress);
+        }
+        assert_eq!(meter.sovereignty_level(), SovereigntyLevel::Level2);
+
+        // Reach Level 3 (0.9) - need 3 more GoalProgress events
+        for i in 5..8 {
+            meter.record_event(i, TrustBehavior::GoalProgress);
+        }
+        assert_eq!(meter.sovereignty_level(), SovereigntyLevel::Level3);
+    }
+}
 
 use crate::Agent;
 
