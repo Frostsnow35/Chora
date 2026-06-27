@@ -253,7 +253,9 @@ mod tests {
         assert_eq!(agent.sovereignty_level(), SovereigntyLevel::Level0);
 
         // Record multiple goal progress events to increase trust
-        for i in 0..15 {
+        // Each GoalProgress = +0.05, starting from 0.5
+        // 2 events: 0.5 + 0.10 = 0.6 → Level 1 (threshold 0.6)
+        for i in 0..2 {
             agent.record_trust_event(i, TrustBehavior::GoalProgress);
         }
 
