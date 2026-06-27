@@ -45,12 +45,15 @@ pub struct MemoryTool {
 }
 
 impl MemoryTool {
+    const TOOL_NAME: &'static str = "memory";
+
     pub fn new(store: MemoryStore) -> Self {
         Self { store }
     }
 }
 
 impl ToolExecutor for MemoryTool {
+
     fn execute(&self, req: &ToolCallRequest) -> ToolResult {
         let operation = req.args.get("operation").and_then(|v| v.as_str()).unwrap_or("");
         let key = req.args.get("key").and_then(|v| v.as_str()).unwrap_or("");
@@ -61,7 +64,7 @@ impl ToolExecutor for MemoryTool {
                 self.store.set(key.to_string(), value);
                 ToolResult {
                     call_id: req.call_id.clone(),
-                    tool_name: "memory".to_string(),
+                    tool_name: Self::TOOL_NAME.to_string(),
                     outcome: ToolOutcome::Success(Value::String("Stored successfully".to_string())),
                 }
             }
@@ -69,12 +72,12 @@ impl ToolExecutor for MemoryTool {
                 match self.store.get(key) {
                     Some(value) => ToolResult {
                         call_id: req.call_id.clone(),
-                        tool_name: "memory".to_string(),
+                        tool_name: Self::TOOL_NAME.to_string(),
                         outcome: ToolOutcome::Success(value),
                     },
                     None => ToolResult {
                         call_id: req.call_id.clone(),
-                        tool_name: "memory".to_string(),
+                        tool_name: Self::TOOL_NAME.to_string(),
                         outcome: ToolOutcome::Error {
                             code: "KEY_NOT_FOUND".to_string(),
                             message: format!("Key '{}' not found in memory", key),
@@ -84,7 +87,7 @@ impl ToolExecutor for MemoryTool {
             }
             _ => ToolResult {
                 call_id: req.call_id.clone(),
-                tool_name: "memory".to_string(),
+                tool_name: Self::TOOL_NAME.to_string(),
                 outcome: ToolOutcome::Error {
                     code: "INVALID_OPERATION".to_string(),
                     message: format!("Invalid operation '{}'. Supported: store, retrieve", operation),
@@ -94,10 +97,10 @@ impl ToolExecutor for MemoryTool {
     }
 
     fn has_tool(&self, name: &str) -> bool {
-        name == "memory"
+        name == Self::TOOL_NAME
     }
 
     fn tool_names(&self) -> Vec<&str> {
-        vec!["memory"]
+        vec![Self::TOOL_NAME]
     }
 }
