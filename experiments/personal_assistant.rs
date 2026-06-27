@@ -24,9 +24,8 @@ use runtime::{
     Agent, AgentId, AgentProgram, BuiltinToolExecutor, Intent, IntentId, MockAgent,
     ModelDescriptor, PromptDescriptor, ScriptedAction, SchedulingHint, SchedulingState,
     StepContext, StepOutput, TerminationReason, TokenCounter, ToolExecutor, ToolResult,
-    WorkingMemoryView,
+    WorkingMemoryView, MemoryStore,
 };
-use runtime::tool::MemoryStore;
 
 /// A minimal working-memory view used as the execution context for tests.
 #[derive(Debug)]
@@ -112,15 +111,10 @@ fn main() {
     let mut pending_result: Option<ToolResult> = None;
 
     let terminated = loop {
-        let memory_capability = runtime::Capability {
-            resource_type: "tool".to_string(),
-            resource_id: "memory".to_string(),
-            access_level: "read_write".to_string(),
-        };
         let mut counter = TokenCounter::new(0);
         let mut ctx = StepContext {
             working_memory: &memory,
-            memory_capabilities: &[memory_capability],
+            memory_capabilities: &[],
             pending_messages: &[],
             now: chrono::Utc::now(),
             token_counter: &mut counter,

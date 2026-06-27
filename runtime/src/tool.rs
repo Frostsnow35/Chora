@@ -11,12 +11,13 @@
 //! See `../../rfc/001-agent-process.md` for the validation plan that motivated
 //! this module (Agent 1 — Tool-Using / Calculator).
 
-pub mod memory_tool;
-pub use memory_tool::{MemoryTool, MemoryStore};
+mod memory_tool;
 
 use crate::ToolCallRequest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+pub use memory_tool::{MemoryTool, MemoryStore};
 
 /// The outcome of a tool execution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -386,11 +387,12 @@ pub struct BuiltinToolExecutor {
 }
 
 impl BuiltinToolExecutor {
-    /// Create an executor with the default tools (`echo`, `add`).
+    /// Create an executor with the default tools (`echo`, `add`, `memory`).
     pub fn new() -> Self {
         let mut registry = ToolRegistry::new();
         registry.register("echo".to_string(), Box::new(EchoTool));
         registry.register("add".to_string(), Box::new(AddTool));
+        registry.register("memory".to_string(), Box::new(MemoryTool::new(MemoryStore::new())));
         Self { registry }
     }
 

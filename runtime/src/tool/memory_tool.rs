@@ -53,10 +53,29 @@ impl MemoryTool {
 }
 
 impl ToolExecutor for MemoryTool {
-
     fn execute(&self, req: &ToolCallRequest) -> ToolResult {
-        let operation = req.args.get("operation").and_then(|v| v.as_str()).unwrap_or("");
-        let key = req.args.get("key").and_then(|v| v.as_str()).unwrap_or("");
+        let operation = match req.args.get("operation").and_then(|v| v.as_str()) {
+            Some(op) => op,
+            None => return ToolResult {
+                call_id: req.call_id.clone(),
+                tool_name: Self::TOOL_NAME.to_string(),
+                outcome: ToolOutcome::Error {
+                    code: "MISSING_OPERATION".to_string(),
+                    message: "Missing required field 'operation'".to_string(),
+                },
+            },
+        };
+        let key = match req.args.get("key").and_then(|v| v.as_str()) {
+            Some(k) => k,
+            None => return ToolResult {
+                call_id: req.call_id.clone(),
+                tool_name: Self::TOOL_NAME.to_string(),
+                outcome: ToolOutcome::Error {
+                    code: "MISSING_KEY".to_string(),
+                    message: "Missing required field 'key'".to_string(),
+                },
+            },
+        };
 
         match operation {
             "store" => {

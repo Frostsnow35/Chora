@@ -19,7 +19,7 @@ mod mock_agent;
 mod program;
 mod record;
 mod state;
-pub mod tool;
+mod tool;
 pub mod sovereignty;
 
 pub use error::*;
@@ -28,7 +28,7 @@ pub use mock_agent::{MockAgent, ScriptedAction};
 pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescriptor, ToolSet};
 pub use record::AgentRecord;
 pub use state::{BlockReason, SchedulingState, TerminationReason};
-pub use tool::{BuiltinToolExecutor, ToolExecutor, ToolOutcome, ToolResult};
+pub use tool::{BuiltinToolExecutor, MemoryStore, MemoryTool, ToolExecutor, ToolOutcome, ToolResult};
 pub use sovereignty::{SovereigntyError, SovereigntyLevel, SovereignAgent};
 
 /// Unique identifier for an agent within a field.

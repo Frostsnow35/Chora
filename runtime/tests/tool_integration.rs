@@ -233,8 +233,7 @@ fn test_unknown_tool_returns_error_outcome() {
 
 #[cfg(test)]
 mod memory_tool_tests {
-    use runtime::{ToolCallRequest, ToolOutcome, ToolExecutor};
-    use runtime::tool::memory_tool::{MemoryTool, MemoryStore};
+    use runtime::{ToolCallRequest, ToolOutcome, ToolExecutor, MemoryTool, MemoryStore};
     use serde_json::json;
 
     #[test]
