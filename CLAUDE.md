@@ -48,16 +48,15 @@ cargo run -p experiments --bin pure_reasoning
 ## 当前状态（2026-06-27）
 - ✅ RFC-001：3/3 验证代理通过
 - ✅ RFC-003：主权系统已实现并合并
-- 📝 RFC-002：调度系统设计完成，待实施
+- 📝 RFC-002：调度系统设计完成，待实施（延后）
 - 🌐 GitHub：https://github.com/Frostsnow35/Chora
 - 📋 PR #1：Personal Assistant Agent 待审查
 
-## 待决策问题
-详见 `.claude/memory/research-questions.md`，高优先级：
-1. 项目的核心定位（理论研究 vs 生产系统 vs 教学工具）
-2. "天马行空的想法"具体是什么
-3. 主权系统与真实 LLM 的关系
-4. RFC-002 调度系统的实施优先级
+## 战略方向（2026-06-27 决策）
+1. **核心定位**：理论研究 + 真实LLM演示（AB组合）
+2. **创新方向**：OS底层创新（具体待澄清）
+3. **主权系统**：实验性影响LLM推理参数（temperature/top_p）
+4. **目标受众**：Agent开发者 + AI使用者 + OS研究者与开发者
 
 ## 反模式警示
 ⚠️ **不要**：静态权限授予（权限须动态检查）  
