@@ -41,11 +41,18 @@ metadata:
 **决策（2026-06-27）：C（实验性）**
 - ✅ Trust Score 影响推理参数（temperature、top_p 等）
 - ✅ 实验性探索，非生产级设计
+- ✅ **已实现（2026-06-27）**：3种映射策略 + SimulatedLLM + Q3 验证代理
+
+**实现细节**：
+- `LinearMapping`：trust ∝ freedom，smooth transition
+- `StepMapping`：离散跳变，按主权级别
+- `ConservativeMapping`：即使高信任也保持约束
+- 验证代理：`experiments/sovereignty_llm_experiment.rs`
 
 **影响**：
-- 需要设计 Trust Score → 推理参数的映射机制
-- 可能需要实验不同的映射策略
-- 需要记录实验结果，验证"真主权"的效果
+- ~~需要设计 Trust Score → 推理参数的映射机制~~ ✅ 已完成
+- ~~可能需要实验不同的映射策略~~ ✅ 已实现3种
+- ~~需要记录实验结果，验证"真主权"的效果~~ ✅ 验证通过
 
 ### Q4: RFC-002 调度系统的优先级？
 **决策（2026-06-27）：A（但延后实施）**

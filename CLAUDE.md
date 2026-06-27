@@ -8,6 +8,18 @@ Chora（源自希腊语 χορός，"合唱团"）是一个研究性开源项�
 # 验证主权系统（需 Rust 1.70+）
 cargo run -p experiments --bin personal_assistant
 
+# Q3 实验: Trust Score → LLM 参数映射（真主权验证）
+cargo run -p experiments --bin sovereignty_llm_experiment
+
+# RFC-002 调度系统验证: 协作式调度
+cargo run -p experiments --bin scheduling_experiment
+
+# IPC 验证: OS-inspired 进程间通信（P2P, 广播, 背压）
+cargo run -p experiments --bin ipc_experiment
+
+# RFC-004 Agent File System 验证: POSIX API, /proc 虚拟文件, 权限控制
+cargo run -p experiments --bin afs_experiment
+
 # 运行全部验证代理
 cargo test -p runtime
 cargo run -p experiments --bin calculator
@@ -26,8 +38,13 @@ cargo run -p experiments --bin pure_reasoning
 
 ## 核心架构
 **Kernel Space / User Space 分离**
-- 内核态：TrustMeter + SovereigntyGate + IntentCore（≤0.5ms）
+- 内核态：TrustMeter + SovereigntyGate + IntentCore + ReasoningMapper（≤0.5ms）
 - 用户态：ReasoningEngine + ToolDispatcher（≥20ms）
+
+**协作式调度（RFC-002）**
+- Scheduler trait（可插拔策略）
+- FifoScheduler（FIFO 策略）+ Runtime（调度循环编排器）
+- O(1) 热路径：next_to_run(), on_ready(), on_block() 均为 O(1)（懒惰删除）
 
 **成长型主权（Growth-based Sovereignty）**
 - Level 0（0.0-0.59）：完全受控

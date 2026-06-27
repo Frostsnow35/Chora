@@ -21,15 +21,25 @@ mod record;
 mod state;
 mod tool;
 pub mod sovereignty;
+pub mod scheduling;
+pub mod ipc;
+pub mod fs;
 
 pub use error::*;
 pub use intent::{GoalDescription, Intent};
 pub use mock_agent::{MockAgent, ScriptedAction};
 pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescriptor, ToolSet};
-pub use record::AgentRecord;
+pub use record::{AgentRecord, SchedulingContext};
 pub use state::{BlockReason, SchedulingState, TerminationReason};
 pub use tool::{BuiltinToolExecutor, MemoryStore, MemoryTool, ToolExecutor, ToolOutcome, ToolResult};
+pub use scheduling::{Scheduler, SchedulingEvent, FifoScheduler, Runtime};
+pub use ipc::{ChannelId, IpcError, Channel, ChannelType, UnidirectionalChannel, BroadcastChannel, IpcBroker};
 pub use sovereignty::{SovereigntyError, SovereigntyLevel, SovereignAgent};
+pub use sovereignty::{SovereignAgentImpl, TrustBehavior};
+pub use sovereignty::{
+    ReasoningConfig, MappingStrategy, LinearMapping, StepMapping, ConservativeMapping,
+    ReasoningMapper, SimulatedLLM, SimulatedResponse, ResponseStyle,
+};
 
 /// Unique identifier for an agent within a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -477,6 +487,17 @@ pub enum StepOutput {
     StateChange(SchedulingState),
     /// Memory operation request (write, update, etc.).
     MemoryOperation(MemoryOp),
+    /// Request to send a message via IPC channel.
+    SendIpc {
+        channel_id: ipc::ChannelId,
+        message: Message,
+    },
+    /// Request to create an IPC channel.
+    CreateChannel {
+        channel_type: ipc::ChannelType,
+        receivers: Vec<AgentId>,
+        capacity: usize,
+    },
 }
 
 /// Step metrics captured during execution.

@@ -28,16 +28,26 @@ metadata:
 | RFC | 主题 | 状态 |
 |-----|------|------|
 | RFC-001 | Agent 抽象 + 三验证代理 | ✅ 完成（3/3 验证代理通过） |
-| RFC-002 | 调度系统 | 📝 设计完成，未实现 |
+| RFC-002 | 调度系统 | ✅ 完成（Scheduler trait + FifoScheduler + Runtime + 验证代理通过） |
 | RFC-003 | 主权系统（成长型自治） | ✅ 完成（已合并到 master） |
+| Q3实验 | Trust Score → LLM 参数映射 | ✅ 完成（3策略 + 验证代理通过） |
 
 ### 已实现组件
 - `runtime/src/` - Agent trait, Intent, AgentProgram, AgentRecord, ToolExecutor, StepContext
+- `runtime/src/scheduling/` - Scheduler trait, FifoScheduler, Runtime (RFC-002 协作式调度)
+- `runtime/src/ipc/` - IPC 子系统：ChannelId, Channel trait, UnidirectionalChannel (P2P), BroadcastChannel (一对多), IpcBroker (消息路由)
+- `runtime/src/fs/` - Agent File System (RFC-004): POSIX API (open/read/write/close/lseek), /proc 虚拟文件, /home 私有存储, /shared 共享存储, TrustLevel 权限控制, RwLock 并发
 - `runtime/src/sovereignty/` - TrustMeter, SovereigntyGate, IntentCore, SovereignAgentImpl
+- `runtime/src/sovereignty/reasoning_params.rs` - ReasoningConfig + 3种映射策略 + ReasoningMapper
+- `runtime/src/sovereignty/reasoning_engine.rs` - SimulatedLLM 模拟推理引擎
 - `runtime/src/tool/memory_tool.rs` - MemoryTool + MemoryStore
 - `experiments/calculator.rs` - Agent 1: Tool-Using 验证
 - `experiments/pure_reasoning.rs` - Agent 2: Pure Reasoning 验证
 - `experiments/personal_assistant.rs` - Agent 3: Memory-Dependent 验证
+- `experiments/sovereignty_llm_experiment.rs` - Q3 验证: Trust Score → LLM 参数映射
+- `experiments/scheduling_experiment.rs` - RFC-002 验证: 协作式调度（FIFO, yield, block, terminate）
+- `experiments/ipc_experiment.rs` - IPC 验证: P2P, 广播, 背压, Runtime 集成
+- `experiments/afs_experiment.rs` - RFC-004 验证: POSIX API, /proc 虚拟文件, /home 私有, 权限控制
 
 ## 关键约束
 - Agent trait signature 已冻结（RFC-001）
