@@ -234,4 +234,12 @@ impl TrustMeter {
     pub fn history(&self) -> &[TrustEvent] {
         &self.history
     }
+
+    /// Apply a global trust settlement from the CollaborationCollector.
+    ///
+    /// This is called after negotiation settlement to link bilateral
+    /// collaboration quality to global sovereignty growth.
+    pub fn apply_global_settlement(&mut self, delta: f64) {
+        self.update_score(delta);
+    }
 }

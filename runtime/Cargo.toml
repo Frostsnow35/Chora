@@ -3,6 +3,14 @@ name = "runtime"
 version = "0.1.0"
 edition = "2024"
 
+[[example]]
+name = "agent_demo"
+path = "examples/agent_demo.rs"
+
+[[example]]
+name = "negotiation_demo"
+path = "examples/negotiation_demo.rs"
+
 [lints]
 workspace = true
 

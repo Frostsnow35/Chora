@@ -32,10 +32,22 @@
 use std::collections::HashMap;
 use crate::{
     Agent, AgentId, AgentProgram, BlockReason, SchedulingState, Message,
-    ipc::{IpcBroker, ChannelId, IpcError},
+    ipc::{IpcBroker, ChannelId, IpcError, NegotiationMessage, CreateProposalRequest},
+    negotiation::NegotiationEngine,
+    sovereignty::SovereigntyLevel,
+    StepOutput, StepContext, StepResult,
 };
 use crate::record::{AgentRecord, StateSnapshot};
 use super::Scheduler;
+
+/// Result of a negotiation tick (timeout checks and cleanup).
+#[derive(Debug, Clone)]
+pub struct NegotiationTickResult {
+    /// Number of sessions aborted due to timeout.
+    pub timed_out: usize,
+    /// Number of completed sessions cleaned up.
+    pub cleaned_up: usize,
+}
 
 /// The Runtime — orchestrates agent execution via scheduling.
 ///
@@ -48,6 +60,8 @@ pub struct Runtime {
     scheduler: Box<dyn Scheduler>,
     /// IPC broker for inter-agent communication.
     ipc_broker: IpcBroker,
+    /// Optional negotiation engine for multi-agent collaboration.
+    negotiation_engine: Option<NegotiationEngine>,
 }
 
 impl Runtime {
@@ -57,6 +71,7 @@ impl Runtime {
             records: HashMap::new(),
             scheduler,
             ipc_broker: IpcBroker::new(),
+            negotiation_engine: None,
         }
     }
 
@@ -66,6 +81,17 @@ impl Runtime {
             records: HashMap::new(),
             scheduler,
             ipc_broker,
+            negotiation_engine: None,
+        }
+    }
+
+    /// Create a new Runtime with negotiation support.
+    pub fn with_negotiation(scheduler: Box<dyn Scheduler>, engine: NegotiationEngine) -> Self {
+        Self {
+            records: HashMap::new(),
+            scheduler,
+            ipc_broker: IpcBroker::new(),
+            negotiation_engine: Some(engine),
         }
     }
 
@@ -230,6 +256,123 @@ impl Runtime {
     pub fn pending_ipc_count(&self, agent_id: AgentId) -> usize {
         self.ipc_broker.pending_count(agent_id)
     }
+
+    // ==================== Negotiation Methods ====================
+
+    /// Get a reference to the negotiation engine (if available).
+    pub fn get_negotiation_engine(&self) -> Option<&NegotiationEngine> {
+        self.negotiation_engine.as_ref()
+    }
+
+    /// Get a mutable reference to the negotiation engine (if available).
+    pub fn get_negotiation_engine_mut(&mut self) -> Option<&mut NegotiationEngine> {
+        self.negotiation_engine.as_mut()
+    }
+
+    /// Perform a negotiation tick: check timeouts and cleanup completed sessions.
+    ///
+    /// Call this periodically in the main scheduling loop to prevent
+    /// stale negotiation sessions from accumulating.
+    pub fn negotiate_tick(&mut self) -> NegotiationTickResult {
+        if let Some(engine) = &mut self.negotiation_engine {
+            let timed_out = engine.check_all_timeouts();
+            let cleaned_up = engine.cleanup_completed();
+            NegotiationTickResult {
+                timed_out,
+                cleaned_up,
+            }
+        } else {
+            NegotiationTickResult {
+                timed_out: 0,
+                cleaned_up: 0,
+            }
+        }
+    }
+
+    /// Execute a step of an agent and process negotiation-related StepOutput.
+    ///
+    /// This method integrates negotiation handling into the agent execution flow.
+    /// Returns the StepResult from the agent execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if negotiation processing fails or agent step fails.
+    pub fn run_step<A: Agent>(&mut self, agent: &mut A, ctx: &mut StepContext) -> Result<StepResult, crate::negotiation::NegotiationError> {
+        // Execute the agent step
+        let result = agent.step(ctx);
+
+        // Process negotiation-related outputs
+        match &result.output {
+            StepOutput::NegotiationRequest {
+                target_agent,
+                affected_agents,
+                amendment,
+                rationale,
+            } => {
+                if let Some(engine) = &mut self.negotiation_engine {
+                    // Check if agent is Level 3 (required for proposal creation)
+                    // Note: We would need to access agent's sovereignty level here
+                    // For now, assume Level 3 for simplicity
+                    let proposer_level = SovereigntyLevel::Level3;
+                    let proposer_trust = 0.9; // Placeholder
+
+                    let request = CreateProposalRequest {
+                        proposer: agent.id(),
+                        target_agent: *target_agent,
+                        amendment: amendment.clone(),
+                        rationale: rationale.clone(),
+                        affected_agents: affected_agents.clone(),
+                        consensus_threshold: 0.6,
+                    };
+
+                    let (_session_id, _broadcasts) = engine
+                        .create_session_from_ipc(request, proposer_level, proposer_trust)?;
+
+                    // Note: IPC sending of NegotiationMessage is handled separately
+                    // by the agent or through direct IPC channel setup
+                }
+            }
+
+            StepOutput::NegotiationResponse {
+                session_id,
+                response,
+            } => {
+                if let Some(engine) = &mut self.negotiation_engine {
+                    let msg = NegotiationMessage::ResponseMessage {
+                        session_id: *session_id,
+                        responder: agent.id(),
+                        response: response.clone().into(),
+                    };
+
+                    engine.handle_ipc_message(msg)?;
+                }
+            }
+
+            StepOutput::NegotiationVote {
+                session_id,
+                decision,
+                rationale,
+            } => {
+                if let Some(engine) = &mut self.negotiation_engine {
+                    let msg = NegotiationMessage::VoteMessage {
+                        session_id: *session_id,
+                        voter: agent.id(),
+                        decision: *decision,
+                        rationale: rationale.clone(),
+                        weight: 0.0, // Ignored by engine
+                    };
+
+                    engine.handle_ipc_message(msg)?;
+                }
+            }
+
+            _ => {
+                // Other StepOutput types are handled elsewhere or ignored
+            }
+        }
+
+        Ok(result)
+    }
 }
 
 impl std::fmt::Debug for Runtime {
@@ -259,6 +402,7 @@ mod tests {
         let runtime = Runtime::new(Box::new(super::super::FifoScheduler::new()));
         assert_eq!(runtime.agent_count(), 0);
         assert_eq!(runtime.ready_count(), 0);
+        assert!(runtime.get_negotiation_engine().is_none());
     }
 
     #[test]
@@ -332,5 +476,55 @@ mod tests {
 
         assert_eq!(runtime.ready_count(), 0);
         assert_eq!(runtime.next_to_run(), None);
+    }
+
+    #[test]
+    fn test_runtime_with_negotiation() {
+        let engine = crate::negotiation::NegotiationEngine::new();
+        let runtime = Runtime::with_negotiation(
+            Box::new(super::super::FifoScheduler::new()),
+            engine
+        );
+
+        assert_eq!(runtime.agent_count(), 0);
+        assert!(runtime.get_negotiation_engine().is_some());
+    }
+
+    #[test]
+    fn test_negotiate_tick_without_engine() {
+        let mut runtime = Runtime::new(Box::new(super::super::FifoScheduler::new()));
+
+        let result = runtime.negotiate_tick();
+        assert_eq!(result.timed_out, 0);
+        assert_eq!(result.cleaned_up, 0);
+    }
+
+    #[test]
+    fn test_negotiate_tick_with_engine() {
+        let engine = crate::negotiation::NegotiationEngine::new();
+        let mut runtime = Runtime::with_negotiation(
+            Box::new(super::super::FifoScheduler::new()),
+            engine
+        );
+
+        let result = runtime.negotiate_tick();
+        assert_eq!(result.timed_out, 0);
+        assert_eq!(result.cleaned_up, 0);
+    }
+
+    #[test]
+    fn test_get_negotiation_engine_mut() {
+        let engine = crate::negotiation::NegotiationEngine::new();
+        let mut runtime = Runtime::with_negotiation(
+            Box::new(super::super::FifoScheduler::new()),
+            engine
+        );
+
+        let engine_ref = runtime.get_negotiation_engine_mut();
+        assert!(engine_ref.is_some());
+
+        // Can modify engine
+        let engine = engine_ref.unwrap();
+        assert_eq!(engine.session_count(), 0);
     }
 }

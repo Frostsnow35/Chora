@@ -40,11 +40,17 @@ mod channel;
 mod unidirectional;
 mod broadcast;
 mod broker;
+mod negotiation_messages;
 
 pub use channel::{ChannelId, IpcError, Channel, ChannelType};
 pub use unidirectional::UnidirectionalChannel;
 pub use broadcast::BroadcastChannel;
 pub use broker::IpcBroker;
+pub use negotiation_messages::{
+    NegotiationMessage,
+    CreateProposalRequest,
+    InitialResponsePayload,
+};
 
 #[cfg(test)]
 mod tests {

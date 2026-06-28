@@ -68,6 +68,29 @@ fn test_proc_virtual_reads(fs: &AgentFileSystem, agent: AgentId) {
     println!("  Read /proc/.../state: {:?}", content);
     fs.close(handle).unwrap();
     println!("  ✓ /proc virtual read works\n");
+
+    // Test new /proc fields
+    let new_fields = vec![
+        "intent_goal",
+        "intent_constraints",
+        "program_model",
+        "program_prompt",
+        "metrics_steps",
+        "metrics_tokens",
+        "capabilities",
+        "channels",
+    ];
+
+    for field in new_fields {
+        let path = format!("/proc/{}/{}", agent, field);
+        let mut handle = fs.open(&path, OpenMode::Read, agent, SovereigntyLevel::Level0).unwrap();
+        let mut buf = vec![0u8; 200];
+        let n = fs.read(&mut handle, &mut buf).unwrap();
+        let content = String::from_utf8_lossy(&buf[..n]);
+        println!("  Read /proc/.../{}: {:?}", field, content);
+        fs.close(handle).unwrap();
+    }
+    println!("  ✓ All /proc virtual fields work\n");
 }
 
 fn test_home_private_storage(fs: &AgentFileSystem, agent: AgentId) {

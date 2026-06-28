@@ -25,7 +25,7 @@ mod fifo_scheduler;
 mod runtime;
 
 pub use fifo_scheduler::FifoScheduler;
-pub use runtime::Runtime;
+pub use runtime::{Runtime, NegotiationTickResult};
 
 use crate::{AgentId, BlockReason, TerminationReason};
 use crate::record::SchedulingContext;

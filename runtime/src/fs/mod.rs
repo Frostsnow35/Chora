@@ -173,11 +173,50 @@ pub struct AgentFileSystem {
 impl AgentFileSystem {
     pub fn new(records: Arc<RwLock<HashMap<AgentId, AgentRecord>>>) -> Self {
         let mut proc_readers: HashMap<String, fn(&AgentRecord) -> String> = HashMap::new();
+
+        // Basic fields
         proc_readers.insert("trust_score".to_string(), |r: &AgentRecord| {
             format!("{:.4}", r.scheduling_context.priority)
         });
         proc_readers.insert("state".to_string(), |r: &AgentRecord| {
             r.state.current.clone()
+        });
+
+        // Intent fields
+        proc_readers.insert("intent_goal".to_string(), |r: &AgentRecord| {
+            format!("{:?}", r.intent.goal)
+        });
+        proc_readers.insert("intent_constraints".to_string(), |r: &AgentRecord| {
+            serde_json::to_string(&r.intent.constraints).unwrap_or_default()
+        });
+
+        // Program fields
+        proc_readers.insert("program_model".to_string(), |r: &AgentRecord| {
+            format!("{}:{}", r.program.model.provider, r.program.model.model_name)
+        });
+        proc_readers.insert("program_prompt".to_string(), |r: &AgentRecord| {
+            r.program.prompt.system_prompt.clone()
+        });
+
+        // Metrics fields
+        proc_readers.insert("metrics_steps".to_string(), |r: &AgentRecord| {
+            r.metrics.steps_executed.to_string()
+        });
+        proc_readers.insert("metrics_tokens".to_string(), |r: &AgentRecord| {
+            r.metrics.tokens_consumed.to_string()
+        });
+        proc_readers.insert("metrics_last_stepped".to_string(), |r: &AgentRecord| {
+            r.metrics.last_stepped_at.map(|t| t.to_rfc3339()).unwrap_or_else(|| "never".to_string())
+        });
+
+        // Capabilities
+        proc_readers.insert("capabilities".to_string(), |r: &AgentRecord| {
+            serde_json::to_string(&r.capabilities).unwrap_or_default()
+        });
+
+        // Channel endpoints
+        proc_readers.insert("channels".to_string(), |r: &AgentRecord| {
+            serde_json::to_string(&r.channel_endpoints).unwrap_or_default()
         });
 
         Self {
