@@ -24,6 +24,10 @@ pub enum SovereigntyApi {
     ProposeAmendment,
     /// Level 3: Establish direct peer communication channel.
     DirectPeerCommunication,
+    /// Level 1: Submit a counter-proposal during negotiation.
+    SubmitCounterProposal,
+    /// Level 0: Vote on an amendment (all affected agents can vote).
+    VoteOnAmendment,
 }
 
 /// Sovereignty Gate — enforces sovereignty level constraints.
@@ -45,6 +49,8 @@ impl SovereigntyGate {
         api_registry.insert(SovereigntyApi::SelfTerminate, 2);
         api_registry.insert(SovereigntyApi::ProposeAmendment, 3);
         api_registry.insert(SovereigntyApi::DirectPeerCommunication, 3);
+        api_registry.insert(SovereigntyApi::SubmitCounterProposal, 1);
+        api_registry.insert(SovereigntyApi::VoteOnAmendment, 0);
 
         let current_level = {
             let meter = trust_meter.lock().unwrap();

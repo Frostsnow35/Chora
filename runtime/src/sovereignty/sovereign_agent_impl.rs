@@ -10,6 +10,8 @@ use super::{SovereignAgent, SovereigntyLevel};
 use super::trust_meter::TrustMeter;
 use super::gate::SovereigntyGate;
 use super::intent_core::IntentCore;
+use super::reasoning_params::{ReasoningMapper, ReasoningConfig};
+use super::reasoning_engine::SimulatedLLM;
 
 /// A sovereign agent implementation with Kernel Space / User Space separation.
 ///
@@ -31,6 +33,11 @@ pub struct SovereignAgentImpl {
     trust_meter: Arc<Mutex<TrustMeter>>,
     /// Kernel Space: Sovereignty Gate (enforces access control).
     sovereignty_gate: Arc<Mutex<SovereigntyGate>>,
+    /// Kernel Space: Reasoning Mapper (Trust Score → LLM parameters).
+    reasoning_mapper: Arc<Mutex<ReasoningMapper>>,
+    /// Kernel Space: Simulated LLM (for experimental demonstrations).
+    #[allow(dead_code)] // Used by experiment binary
+    reasoning_engine: Arc<Mutex<SimulatedLLM>>,
 }
 
 impl SovereignAgentImpl {
@@ -46,6 +53,10 @@ impl SovereignAgentImpl {
             crate::sovereignty::trust_meter::SovereigntyThresholds::default(),
         )));
         let sovereignty_gate = Arc::new(Mutex::new(SovereigntyGate::new(trust_meter.clone())));
+        let reasoning_mapper = Arc::new(Mutex::new(ReasoningMapper::new(
+            Box::new(super::reasoning_params::LinearMapping),
+        )));
+        let reasoning_engine = Arc::new(Mutex::new(SimulatedLLM::new(42)));
 
         Self {
             id,
@@ -54,7 +65,25 @@ impl SovereignAgentImpl {
             intent_core: Arc::new(Mutex::new(intent_core)),
             trust_meter,
             sovereignty_gate,
+            reasoning_mapper,
+            reasoning_engine,
         }
+    }
+
+    /// Create a sovereign agent with a custom mapping strategy.
+    pub fn with_mapping_strategy(
+        id: AgentId,
+        intent: Intent,
+        intent_core: IntentCore,
+        initial_trust_score: f64,
+        strategy: Box<dyn super::reasoning_params::MappingStrategy>,
+    ) -> Self {
+        let agent = Self::new(id, intent, intent_core, initial_trust_score);
+        {
+            let mut mapper = agent.reasoning_mapper.lock().unwrap();
+            mapper.set_strategy(strategy);
+        }
+        agent
     }
 
     /// Record a trust event (called by User Space after sovereignty API calls).
@@ -76,6 +105,26 @@ impl SovereignAgentImpl {
     pub fn check_sovereignty_access(&self, api: &crate::sovereignty::gate::SovereigntyApi) -> bool {
         let gate = self.sovereignty_gate.lock().unwrap();
         gate.check_access(api, 0).is_ok()
+    }
+
+    /// Get the current reasoning configuration (computed from trust score).
+    ///
+    /// This method is O(1) and caches results internally.
+    pub fn current_reasoning_config(&self) -> ReasoningConfig {
+        let level = self.sovereignty_level();
+        let trust = self.trust_score();
+        let mut mapper = self.reasoning_mapper.lock().unwrap();
+        mapper.compute(trust, level).clone()
+    }
+
+    /// Get the reasoning mapper (for advanced use).
+    pub fn reasoning_mapper(&self) -> &Arc<Mutex<ReasoningMapper>> {
+        &self.reasoning_mapper
+    }
+
+    /// Get the reasoning engine (for advanced use).
+    pub fn reasoning_engine(&self) -> &Arc<Mutex<SimulatedLLM>> {
+        &self.reasoning_engine
     }
 }
 

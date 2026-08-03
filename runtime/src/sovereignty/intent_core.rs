@@ -108,9 +108,29 @@ impl ExecutionPlan {
     /// Set priority for a goal.
     pub fn set_priority(&mut self, goal: impl Into<String>, priority: f64) {
         let goal_str = goal.into();
-        // Remove existing entry for this goal if present
         self.priorities.retain(|(g, _)| g != &goal_str);
         self.priorities.push((goal_str, priority));
+    }
+
+    /// Apply a PlanAmendment to this ExecutionPlan.
+    pub fn apply_amendment(&mut self, amendment: &crate::negotiation::PlanAmendment) {
+        match amendment {
+            crate::negotiation::PlanAmendment::ModifyGoal { new_goal } => {
+                self.current_goal = new_goal.as_str().to_string();
+            }
+            crate::negotiation::PlanAmendment::AddConstraint { constraint } => {
+                self.strategy.push(format!("Constraint: {}", constraint.description));
+            }
+            crate::negotiation::PlanAmendment::RemoveConstraint { constraint_id } => {
+                let id_str = constraint_id.to_string();
+                self.strategy.retain(|s| !s.contains(&id_str));
+            }
+            crate::negotiation::PlanAmendment::ModifyPriority { new_priorities } => {
+                for (goal, priority) in new_priorities {
+                    self.set_priority(goal.clone(), *priority);
+                }
+            }
+        }
     }
 }
 

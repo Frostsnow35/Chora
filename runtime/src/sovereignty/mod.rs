@@ -14,12 +14,19 @@ pub mod trust_meter;
 pub mod gate;
 pub mod intent_core;
 pub mod sovereign_agent_impl;
+pub mod reasoning_params;
+pub mod reasoning_engine;
 
 pub use error::*;
 pub use trust_meter::{TrustBehavior, TrustEvent, TrustMeter, SovereigntyThresholds};
 pub use gate::{SovereigntyApi, SovereigntyGate};
 pub use intent_core::{IntentCore, Constitution, ExecutionPlan, Condition, Boundary};
 pub use sovereign_agent_impl::SovereignAgentImpl;
+pub use reasoning_params::{
+    ReasoningConfig, MappingStrategy, LinearMapping, StepMapping, ConservativeMapping,
+    ReasoningMapper,
+};
+pub use reasoning_engine::{SimulatedLLM, SimulatedResponse, ResponseStyle};
 
 #[cfg(test)]
 mod tests {

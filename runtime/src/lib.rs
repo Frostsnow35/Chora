@@ -21,15 +21,29 @@ mod record;
 mod state;
 mod tool;
 pub mod sovereignty;
+pub mod scheduling;
+pub mod ipc;
+pub mod fs;
+pub mod negotiation;
 
 pub use error::*;
 pub use intent::{GoalDescription, Intent};
 pub use mock_agent::{MockAgent, ScriptedAction};
 pub use program::{AgentProgram, ModelDescriptor, PromptDescriptor, ToolDescriptor, ToolSet};
-pub use record::AgentRecord;
+pub use record::{AgentRecord, SchedulingContext};
 pub use state::{BlockReason, SchedulingState, TerminationReason};
-pub use tool::{BuiltinToolExecutor, ToolExecutor, ToolOutcome, ToolResult};
+pub use tool::{BuiltinToolExecutor, MemoryStore, MemoryTool, ToolExecutor, ToolOutcome, ToolResult};
+pub use scheduling::{Scheduler, SchedulingEvent, FifoScheduler, Runtime, NegotiationTickResult};
+pub use ipc::{ChannelId, IpcError, Channel, ChannelType, UnidirectionalChannel, BroadcastChannel, IpcBroker};
 pub use sovereignty::{SovereigntyError, SovereigntyLevel, SovereignAgent};
+pub use sovereignty::{SovereignAgentImpl, TrustBehavior};
+pub use sovereignty::{
+    ReasoningConfig, MappingStrategy, LinearMapping, StepMapping, ConservativeMapping,
+    ReasoningMapper, SimulatedLLM, SimulatedResponse, ResponseStyle,
+};
+pub use negotiation::{SessionId, PlanAmendment, InitialResponse, VoteDecision};
+pub use negotiation::{NegotiationEngine, Outcome, Constraint, ConstraintId, AbortReason};
+pub use negotiation::{NegotiationConfig, NegotiationError};
 
 /// Unique identifier for an agent within a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -477,6 +491,36 @@ pub enum StepOutput {
     StateChange(SchedulingState),
     /// Memory operation request (write, update, etc.).
     MemoryOperation(MemoryOp),
+    /// Request to send a message via IPC channel.
+    SendIpc {
+        channel_id: ipc::ChannelId,
+        message: Message,
+    },
+    /// Request to create an IPC channel.
+    CreateChannel {
+        channel_type: ipc::ChannelType,
+        receivers: Vec<AgentId>,
+        capacity: usize,
+    },
+    /// Request to create a negotiation session (Level 3 agent).
+    /// RFC-005: Intent Negotiation Protocol.
+    NegotiationRequest {
+        target_agent: AgentId,
+        affected_agents: Vec<AgentId>,
+        amendment: negotiation::PlanAmendment,
+        rationale: String,
+    },
+    /// Submit response to an active negotiation session (Phase 2).
+    NegotiationResponse {
+        session_id: negotiation::SessionId,
+        response: negotiation::InitialResponse,
+    },
+    /// Submit vote in final voting phase (Phase 4).
+    NegotiationVote {
+        session_id: negotiation::SessionId,
+        decision: negotiation::VoteDecision,
+        rationale: String,
+    },
 }
 
 /// Step metrics captured during execution.
@@ -554,4 +598,193 @@ pub enum DeliveryError {
 
     #[error("other: {0}")]
     Other(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use negotiation::Constraint;
+    use negotiation::ConstraintId;
+
+    fn test_agent_id(n: u64) -> AgentId {
+        let bytes = n.to_le_bytes();
+        let mut uuid_bytes = [0u8; 16];
+        uuid_bytes[..8].copy_from_slice(&bytes);
+        AgentId::from_bytes(uuid_bytes)
+    }
+
+    #[test]
+    fn test_step_output_negotiation_request() {
+        let target = test_agent_id(2);
+        let affected = vec![test_agent_id(3), test_agent_id(4)];
+        let amendment = PlanAmendment::ModifyGoal {
+            new_goal: GoalDescription::new("Updated goal"),
+        };
+
+        let output = StepOutput::NegotiationRequest {
+            target_agent: target,
+            affected_agents: affected.clone(),
+            amendment: amendment.clone(),
+            rationale: "Requirement changed".to_string(),
+        };
+
+        match output {
+            StepOutput::NegotiationRequest {
+                target_agent: t,
+                affected_agents: a,
+                amendment: am,
+                rationale: r,
+            } => {
+                assert_eq!(t, target);
+                assert_eq!(a.len(), 2);
+                assert_eq!(r, "Requirement changed");
+                match am {
+                    PlanAmendment::ModifyGoal { new_goal } => {
+                        assert_eq!(new_goal.as_str(), "Updated goal");
+                    }
+                    _ => panic!("Expected ModifyGoal"),
+                }
+            }
+            _ => panic!("Expected NegotiationRequest"),
+        }
+    }
+
+    #[test]
+    fn test_step_output_negotiation_response() {
+        let session_id = SessionId::new();
+        let response = InitialResponse::Accept;
+
+        let output = StepOutput::NegotiationResponse {
+            session_id,
+            response: response.clone(),
+        };
+
+        match output {
+            StepOutput::NegotiationResponse { session_id: s, response: r } => {
+                assert_eq!(s, session_id);
+                assert!(matches!(r, InitialResponse::Accept));
+            }
+            _ => panic!("Expected NegotiationResponse"),
+        }
+    }
+
+    #[test]
+    fn test_step_output_negotiation_vote() {
+        let session_id = SessionId::new();
+        let decision = VoteDecision::Accept;
+
+        let output = StepOutput::NegotiationVote {
+            session_id,
+            decision,
+            rationale: "I agree".to_string(),
+        };
+
+        match output {
+            StepOutput::NegotiationVote { session_id: s, decision: d, rationale: r } => {
+                assert_eq!(s, session_id);
+                assert_eq!(d, VoteDecision::Accept);
+                assert_eq!(r, "I agree");
+            }
+            _ => panic!("Expected NegotiationVote"),
+        }
+    }
+
+    #[test]
+    fn test_step_output_negotiation_request_with_add_constraint() {
+        let constraint = Constraint {
+            id: ConstraintId::new(),
+            description: "No destructive operations".to_string(),
+        };
+        let amendment = PlanAmendment::AddConstraint {
+            constraint: constraint.clone(),
+        };
+
+        let output = StepOutput::NegotiationRequest {
+            target_agent: test_agent_id(1),
+            affected_agents: vec![test_agent_id(2)],
+            amendment,
+            rationale: "Safety constraint".to_string(),
+        };
+
+        match output {
+            StepOutput::NegotiationRequest { amendment, .. } => {
+                match amendment {
+                    PlanAmendment::AddConstraint { constraint: c } => {
+                        assert_eq!(c.description, "No destructive operations");
+                    }
+                    _ => panic!("Expected AddConstraint"),
+                }
+            }
+            _ => panic!("Expected NegotiationRequest"),
+        }
+    }
+
+    #[test]
+    fn test_step_output_negotiation_response_counter_proposal() {
+        let counter_amendment = PlanAmendment::ModifyPriority {
+            new_priorities: vec![("task_a".to_string(), 0.9)],
+        };
+        let response = InitialResponse::CounterProposal {
+            amendment: counter_amendment.clone(),
+            rationale: "Better priority".to_string(),
+        };
+
+        let output = StepOutput::NegotiationResponse {
+            session_id: SessionId::new(),
+            response,
+        };
+
+        match output {
+            StepOutput::NegotiationResponse { response, .. } => {
+                match response {
+                    InitialResponse::CounterProposal { amendment, rationale } => {
+                        match amendment {
+                            PlanAmendment::ModifyPriority { new_priorities } => {
+                                assert_eq!(new_priorities.len(), 1);
+                                assert_eq!(new_priorities[0].1, 0.9);
+                            }
+                            _ => panic!("Expected ModifyPriority"),
+                        }
+                        assert_eq!(rationale, "Better priority");
+                    }
+                    _ => panic!("Expected CounterProposal"),
+                }
+            }
+            _ => panic!("Expected NegotiationResponse"),
+        }
+    }
+
+    #[test]
+    fn test_step_output_negotiation_vote_reject() {
+        let output = StepOutput::NegotiationVote {
+            session_id: SessionId::new(),
+            decision: VoteDecision::Reject,
+            rationale: "Too risky".to_string(),
+        };
+
+        match output {
+            StepOutput::NegotiationVote { decision, rationale, .. } => {
+                assert_eq!(decision, VoteDecision::Reject);
+                assert_eq!(rationale, "Too risky");
+            }
+            _ => panic!("Expected NegotiationVote"),
+        }
+    }
+
+    #[test]
+    fn test_negotiation_types_exported() {
+        // Verify that negotiation types are properly exported and accessible
+        let session_id = SessionId::new();
+        let amendment = PlanAmendment::ModifyGoal {
+            new_goal: GoalDescription::new("Test"),
+        };
+        let response = InitialResponse::Abstain;
+        let decision = VoteDecision::Abstain;
+
+        // Just ensure they can be constructed without errors
+        assert!(!session_id.to_string().is_empty());
+        assert!(matches!(amendment, PlanAmendment::ModifyGoal { .. }));
+        assert!(matches!(response, InitialResponse::Abstain));
+        assert!(matches!(decision, VoteDecision::Abstain));
+    }
 }
